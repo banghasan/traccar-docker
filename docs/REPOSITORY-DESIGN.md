@@ -1,8 +1,8 @@
-# Desain repository Traccar Docker Image Builder
+# Desain repository `banghasan/traccar-docker`
 
 ## 1. Tujuan dan batasan
 
-Repository baru ini bukan fork penuh Traccar dan bukan pengganti repository
+Repository public ini bukan fork penuh Traccar dan bukan pengganti repository
 upstream. Isinya hanya definisi image, dokumentasi, dan GitHub Actions untuk
 membangun image dari source upstream.
 
@@ -10,7 +10,7 @@ Dalam scope:
 
 - memilih branch, tag, atau commit Traccar;
 - build server dan web app;
-- membuat image Docker multi-platform;
+- membuat image Docker Alpine untuk `linux/amd64`;
 - publish image secara manual ke registry;
 - dokumentasi koneksi ke database eksternal.
 
@@ -86,9 +86,6 @@ Workflow yang akan dibuat pada tahap implementasi sebaiknya memiliki input:
 |---|---:|---|---|
 | `source_ref` | ya | `master` atau `5eb9578...` | Ref upstream yang di-checkout |
 | `image_tag` | ya | `6.15.3-master.20260909` | Tag image hasil build |
-| `push_image` | ya | `true` | Memisahkan build/test dari publish |
-| `dockerfile_variant` | tidak | `alpine` | Tahap awal: Alpine saja |
-
 Default `source_ref` boleh `master` agar nyaman untuk bugfix terbaru, tetapi
 deployment production harus memakai commit SHA atau tag internal immutable.
 
@@ -118,15 +115,15 @@ stage server, lib, schema, templates, conf, web
 buat traccar-other-<version>.zip
       │
       ▼
-Buildx: linux/amd64 + linux/arm64
+Buildx: linux/amd64
       │
-      ├── push_image=false → build/check saja
-      └── push_image=true  → push ke registry
+      ▼
+push ke ghcr.io/banghasan/traccar
 ```
 
-Workflow tidak boleh memiliki `push:` atau `schedule:` pada blok `on`. Workflow
-sebaiknya menggunakan permission minimum: `contents: read` dan `packages: write`
-hanya jika publish ke GHCR diaktifkan.
+Workflow tidak boleh memiliki `push:` atau `schedule:` pada blok `on`. Karena
+workflow selalu melakukan publish setelah build manual, permission minimumnya
+adalah `contents: read` dan `packages: write`.
 
 Action pihak ketiga sebaiknya menggunakan versi major yang dipelihara dan,
 untuk repository production yang memerlukan supply-chain control ketat, dipin ke
@@ -134,14 +131,18 @@ commit SHA.
 
 ## 6. Registry dan penamaan image
 
-GHCR adalah pilihan awal yang sederhana karena terintegrasi dengan GitHub
-Actions. Docker Hub dapat ditambahkan kemudian dengan secret terpisah.
+Registry yang digunakan adalah GHCR karena terintegrasi dengan GitHub Actions.
+Image name final:
+
+```text
+ghcr.io/banghasan/traccar
+```
 
 Contoh penamaan:
 
 ```text
-ghcr.io/<owner>/traccar:6.15.3-master.20260909
-ghcr.io/<owner>/traccar:sha-5eb9578
+ghcr.io/banghasan/traccar:6.15.3-master.20260909
+ghcr.io/banghasan/traccar:sha-5eb9578
 ```
 
 Label OCI yang disarankan:
@@ -203,7 +204,8 @@ bukan dengan mengandalkan tag mutable.
   itu source commit dan artefak build perlu dicatat.
 - Perbedaan versi server dan web app harus dihindari. Web app sebaiknya diambil
   dari submodule commit yang terkait dengan source server.
-- Build multi-platform memerlukan Buildx/QEMU dan waktu build lebih lama.
+- Target awal hanya `linux/amd64`; dukungan arsitektur lain dapat ditambahkan
+  setelah validasi.
 
 ## 10. Tahap implementasi berikutnya
 

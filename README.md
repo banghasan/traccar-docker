@@ -1,6 +1,6 @@
-# Traccar Docker Image Builder
+# banghasan/traccar-docker
 
-Rancangan repository terpisah untuk membangun Docker image Traccar dari source
+Repository terpisah untuk membangun Docker image Traccar dari source
 code upstream, termasuk commit di `master` yang belum masuk release resmi.
 
 Repository ini hanya menangani proses build dan publish image. Database tidak
@@ -14,16 +14,20 @@ sebagai service terpisah.
 
 Rancangan ini layak digunakan dengan ketentuan berikut:
 
+- Repository ini bersifat public dan image dipublish ke
+  `ghcr.io/banghasan/traccar`.
 - Source Traccar diambil dari `traccar/traccar` pada `source_ref` yang dipilih
   ketika workflow dijalankan.
 - `source_ref` sebaiknya berupa commit SHA untuk build yang reproducible. Branch
   seperti `master` tetap dapat dipakai untuk mengambil perbaikan terbaru.
 - Workflow hanya memiliki trigger `workflow_dispatch`; tidak ada build otomatis
-  pada `push`, `pull_request`, atau jadwal.
+  pada `push`, `pull_request`, atau jadwal. Setiap run yang berhasil langsung
+  melakukan push ke GHCR.
 - Build menjalankan server Gradle dan web app, kemudian membuat payload yang
   setara dengan `traccar-other-<version>.zip` milik upstream.
 - Dockerfile runtime mengikuti pola resmi Traccar: custom JRE dibuat dengan
   `jlink`, lalu aplikasi dijalankan dari `/opt/traccar`.
+- Image hanya ditargetkan untuk `linux/amd64` pada tahap awal.
 - Image diberi tag yang mengidentifikasi source ref/commit. Tag `latest` tidak
   boleh dipindahkan diam-diam ke source yang berbeda.
 
@@ -41,24 +45,23 @@ schema, template, konfigurasi, dan runtime Java ke dalam payload zip. Repository
 baru ini akan mengambil bagian build tersebut tanpa membuat installer OS atau
 menjalankan database.
 
-## Struktur repository yang diusulkan
+## Struktur repository
 
 ```text
 .
 ├── .github/
 │   └── workflows/
-│       └── build-image.yml       # manual workflow_dispatch
+│       └── build-image.yml       # manual workflow_dispatch + push GHCR
 ├── docs/
 │   └── REPOSITORY-DESIGN.md      # keputusan dan prosedur operasional
-├── Dockerfile.alpine             # image utama, multi-platform
+├── Dockerfile.alpine             # image utama, linux/amd64
 ├── Dockerfile.debian             # opsional
 ├── Dockerfile.ubuntu             # opsional
 └── README.md
 ```
 
-Tahap pertama sebaiknya hanya menyediakan image Alpine multi-platform
-`linux/amd64` dan `linux/arm64`. Variant Debian/Ubuntu dapat ditambahkan setelah
-image utama tervalidasi.
+Tahap pertama hanya menyediakan image Alpine `linux/amd64`. Variant Debian,
+Ubuntu, atau arsitektur lain dapat ditambahkan setelah image utama tervalidasi.
 
 ## Cara menjalankan hasil image
 
@@ -79,7 +82,7 @@ docker run -d \
   -e DATABASE_PASSWORD='ganti-password' \
   -v /opt/traccar/logs:/opt/traccar/logs \
   -v /opt/traccar/data:/opt/traccar/data \
-  ghcr.io/<owner>/traccar:<image-tag>
+  ghcr.io/banghasan/traccar:<image-tag>
 ```
 
 Nama host `mysql`, credential, volume, dan network hanyalah contoh. Image
@@ -99,11 +102,11 @@ jika hanya sebagian protocol yang digunakan.
 5. Workflow men-stage `tracker-server.jar`, dependency `lib`, `schema`,
    `templates`, konfigurasi, dan hasil web build.
 6. Payload dikemas sebagai `traccar-other-<version>.zip`.
-7. Docker Buildx membangun image untuk `linux/amd64` dan `linux/arm64`.
-8. Setelah build berhasil, image dipush ke registry yang dipilih.
+7. Docker Buildx membangun image untuk `linux/amd64`.
+8. Setelah build berhasil, image dipush ke `ghcr.io/banghasan/traccar`.
 
-Tidak ada langkah publish yang berjalan otomatis. Secret registry hanya dibaca
-ketika workflow manual benar-benar dijalankan.
+Tidak ada build otomatis. Publish memang dilakukan oleh workflow, tetapi hanya
+setelah workflow manual dijalankan oleh user.
 
 ## Verifikasi sebelum dipakai production
 
