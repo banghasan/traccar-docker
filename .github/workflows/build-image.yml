@@ -1,0 +1,124 @@
+name: Build and publish Traccar image
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_ref:
+        description: Upstream Traccar branch, tag, or commit SHA to build
+        required: true
+        default: master
+        type: string
+      image_tag:
+        description: Immutable Docker tag to publish, for example 6.15.3-dev.5eb9578
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  build-and-publish:
+    name: Build and publish linux/amd64
+    runs-on: ubuntu-latest
+    env:
+      IMAGE_NAME: ghcr.io/banghasan/traccar
+
+    steps:
+      - name: Checkout image builder repository
+        uses: actions/checkout@v6
+
+      - name: Checkout Traccar source
+        uses: actions/checkout@v6
+        with:
+          repository: traccar/traccar
+          ref: ${{ inputs.source_ref }}
+          fetch-depth: 0
+          submodules: recursive
+          path: traccar-source
+
+      - name: Validate image tag
+        env:
+          IMAGE_TAG: ${{ inputs.image_tag }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ ! "$IMAGE_TAG" =~ ^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$ ]]; then
+            echo "Invalid Docker image tag: $IMAGE_TAG"
+            exit 1
+          fi
+
+      - name: Record source revision
+        id: source
+        working-directory: traccar-source
+        shell: bash
+        run: |
+          set -euo pipefail
+          revision="$(git rev-parse HEAD)"
+          echo "revision=$revision" >> "$GITHUB_OUTPUT"
+          echo "short_revision=${revision:0:12}" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 25
+          cache: gradle
+
+      - name: Build Traccar server
+        working-directory: traccar-source
+        run: ./gradlew assemble --no-daemon --stacktrace
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: traccar-source/traccar-web/package-lock.json
+
+      - name: Build Traccar web app
+        working-directory: traccar-source/traccar-web
+        run: npm ci && npm run build
+
+      - name: Create Docker payload
+        working-directory: traccar-source
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf "$GITHUB_WORKSPACE/payload" "$GITHUB_WORKSPACE/traccar-other.zip"
+          mkdir -p "$GITHUB_WORKSPACE/payload"/{conf,lib,schema,templates,web,data,logs}
+
+          cp target/tracker-server.jar "$GITHUB_WORKSPACE/payload/"
+          cp target/lib/* "$GITHUB_WORKSPACE/payload/lib/"
+          cp schema/* "$GITHUB_WORKSPACE/payload/schema/"
+          cp -r templates/* "$GITHUB_WORKSPACE/payload/templates/"
+          cp setup/traccar.xml "$GITHUB_WORKSPACE/payload/conf/"
+          cp setup/README.txt "$GITHUB_WORKSPACE/payload/"
+          cp -r traccar-web/build/* "$GITHUB_WORKSPACE/payload/web/"
+
+          (cd "$GITHUB_WORKSPACE/payload" && zip -q -r "$GITHUB_WORKSPACE/traccar-other.zip" .)
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push image
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: ./Dockerfile.alpine
+          platforms: linux/amd64
+          push: true
+          tags: ${{ env.IMAGE_NAME }}:${{ inputs.image_tag }}
+          labels: |
+            org.opencontainers.image.revision=${{ steps.source.outputs.revision }}
+            org.opencontainers.image.version=${{ inputs.image_tag }}
+            io.banghasan.traccar.source-ref=${{ inputs.source_ref }}
+          provenance: true
+          sbom: true

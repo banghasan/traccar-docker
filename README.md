@@ -7,8 +7,8 @@ Repository ini hanya menangani proses build dan publish image. Database tidak
 dimasukkan ke dalam image; MySQL/MariaDB atau PostgreSQL/TimescaleDB dijalankan
 sebagai service terpisah.
 
-> Status: dokumentasi rancangan. Workflow, Docker build, dan publish image
-> belum dijalankan.
+> Status: implementasi awal tersedia. Docker build dan publish image belum
+> dijalankan dari workspace ini.
 
 ## Keputusan rancangan
 
@@ -54,9 +54,9 @@ menjalankan database.
 │       └── build-image.yml       # manual workflow_dispatch + push GHCR
 ├── docs/
 │   └── REPOSITORY-DESIGN.md      # keputusan dan prosedur operasional
-├── Dockerfile.alpine             # image utama, linux/amd64
-├── Dockerfile.debian             # opsional
-├── Dockerfile.ubuntu             # opsional
+├── Dockerfile.alpine             # image Alpine, linux/amd64
+├── .dockerignore
+├── .gitignore
 └── README.md
 ```
 
@@ -93,7 +93,7 @@ Untuk deployment production, gunakan database eksternal yang persistent dan
 backup database secara terpisah. Port protocol tidak perlu dipublish seluruhnya
 jika hanya sebagian protocol yang digunakan.
 
-## Alur build yang direncanakan
+## Alur build
 
 1. User membuka **Actions → Build Traccar Image → Run workflow**.
 2. User mengisi `source_ref`, misalnya commit SHA, tag, atau `master`.
@@ -105,8 +105,19 @@ jika hanya sebagian protocol yang digunakan.
 7. Docker Buildx membangun image untuk `linux/amd64`.
 8. Setelah build berhasil, image dipush ke `ghcr.io/banghasan/traccar`.
 
-Tidak ada build otomatis. Publish memang dilakukan oleh workflow, tetapi hanya
-setelah workflow manual dijalankan oleh user.
+Input workflow yang tersedia:
+
+- `source_ref`: branch, tag, atau commit SHA upstream; default `master`.
+- `image_tag`: tag Docker yang akan dipublish, misalnya
+  `6.15.3-dev.5eb9578`.
+
+Workflow selalu melakukan push setelah build berhasil. Tidak ada mode build-only
+pada workflow ini.
+
+Perlu diperhatikan bahwa versi yang ditampilkan oleh server Traccar dapat masih
+mengikuti metadata versi di source upstream. Untuk membedakan build source
+terbaru, gunakan `image_tag` dan label commit image sebagai sumber identitas
+utama.
 
 ## Verifikasi sebelum dipakai production
 
@@ -117,6 +128,9 @@ setelah workflow manual dijalankan oleh user.
 - Uji upgrade dari image lama dengan volume data dan konfigurasi yang sama.
 - Simpan digest image yang sudah diuji; gunakan digest atau tag immutable untuk
   deployment production.
+
+Package GHCR harus diubah menjadi public jika GitHub membuatnya private pada
+publish pertama. Repository source ini sendiri bersifat public.
 
 ## Referensi
 

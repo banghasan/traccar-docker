@@ -2,9 +2,9 @@
 
 ## 1. Tujuan dan batasan
 
-Repository public ini bukan fork penuh Traccar dan bukan pengganti repository
-upstream. Isinya hanya definisi image, dokumentasi, dan GitHub Actions untuk
-membangun image dari source upstream.
+Repository public `banghasan/traccar-docker` ini bukan fork penuh Traccar dan
+bukan pengganti repository upstream. Isinya hanya definisi image, dokumentasi,
+dan GitHub Actions untuk membangun image dari source upstream.
 
 Dalam scope:
 
@@ -80,12 +80,13 @@ dibuat dari commit yang diketahui, lalu workflow menyimpan `source_ref` dan
 
 ## 4. Input workflow manual
 
-Workflow yang akan dibuat pada tahap implementasi sebaiknya memiliki input:
+Workflow yang digunakan memiliki input:
 
 | Input | Wajib | Nilai contoh | Keterangan |
 |---|---:|---|---|
 | `source_ref` | ya | `master` atau `5eb9578...` | Ref upstream yang di-checkout |
 | `image_tag` | ya | `6.15.3-master.20260909` | Tag image hasil build |
+
 Default `source_ref` boleh `master` agar nyaman untuk bugfix terbaru, tetapi
 deployment production harus memakai commit SHA atau tag internal immutable.
 
@@ -95,7 +96,7 @@ harus menjadi keputusan eksplisit pada workflow manual.
 
 ## 5. Langkah workflow yang diharapkan
 
-Workflow final akan mengikuti urutan ini:
+Workflow final mengikuti urutan ini:
 
 ```text
 workflow_dispatch
@@ -125,7 +126,7 @@ Workflow tidak boleh memiliki `push:` atau `schedule:` pada blok `on`. Karena
 workflow selalu melakukan publish setelah build manual, permission minimumnya
 adalah `contents: read` dan `packages: write`.
 
-Action pihak ketiga sebaiknya menggunakan versi major yang dipelihara dan,
+Action pihak ketiga menggunakan versi major yang dipelihara dan,
 untuk repository production yang memerlukan supply-chain control ketat, dipin ke
 commit SHA.
 
@@ -204,18 +205,24 @@ bukan dengan mengandalkan tag mutable.
   itu source commit dan artefak build perlu dicatat.
 - Perbedaan versi server dan web app harus dihindari. Web app sebaiknya diambil
   dari submodule commit yang terkait dengan source server.
+- Metadata versi di dalam aplikasi dapat masih mengikuti versi terakhir yang
+  ditulis upstream pada source. Identitas build yang utama harus berupa image
+  tag dan source commit OCI label.
 - Target awal hanya `linux/amd64`; dukungan arsitektur lain dapat ditambahkan
   setelah validasi.
 
-## 10. Tahap implementasi berikutnya
+## 10. Implementasi saat ini dan tahap berikutnya
 
-Setelah rancangan disetujui:
+Implementasi awal yang sudah ditambahkan:
 
-1. Tambahkan `Dockerfile.alpine` yang diadaptasi minimal dari upstream.
-2. Tambahkan `.github/workflows/build-image.yml` dengan `workflow_dispatch` saja.
-3. Tambahkan konfigurasi registry dan permission minimum.
-4. Jalankan satu build manual ke tag sementara.
-5. Uji dengan database staging eksternal.
-6. Dokumentasikan digest dan prosedur rollback.
+1. `Dockerfile.alpine` untuk image Alpine `linux/amd64`.
+2. `.github/workflows/build-image.yml` dengan `workflow_dispatch` saja.
+3. Build server dan web app dari source upstream.
+4. Publish ke `ghcr.io/banghasan/traccar` dengan permission minimum.
+5. `.dockerignore` dan `.gitignore` untuk menjaga context tetap kecil.
 
-Tahap tersebut sengaja belum dilakukan pada saat dokumentasi ini dibuat.
+Tahap berikutnya:
+
+1. Jalankan satu build manual ke tag sementara.
+2. Uji dengan database staging eksternal.
+3. Dokumentasikan digest image yang lulus validasi.
