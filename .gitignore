@@ -1,3 +1,4 @@
 payload/
 traccar-other.zip
 traccar-source/
+.env

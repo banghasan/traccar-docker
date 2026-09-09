@@ -50,11 +50,15 @@ menjalankan database.
 ```text
 .
 ├── .github/
+│   ├── dependabot.yml             # update digest base image dan action
 │   └── workflows/
-│       └── build-image.yml       # manual workflow_dispatch + push GHCR
+│       └── build-image.yml        # manual workflow_dispatch + push GHCR
 ├── docs/
 │   └── REPOSITORY-DESIGN.md      # keputusan dan prosedur operasional
 ├── Dockerfile.alpine             # image Alpine, linux/amd64
+├── examples/
+│   ├── docker-compose.external-mysql.yml
+│   └── .env.example
 ├── .dockerignore
 ├── .gitignore
 └── README.md
@@ -74,36 +78,57 @@ docker run -d \
   --restart unless-stopped \
   --network backend \
   -p 8082:8082 \
-  -p 5000-5500:5000-5500 \
+  -p 5000:5000/tcp \
+  -p 5000:5000/udp \
   -e CONFIG_USE_ENVIRONMENT_VARIABLES=true \
   -e DATABASE_DRIVER=com.mysql.cj.jdbc.Driver \
   -e "DATABASE_URL=jdbc:mysql://mysql:3306/traccar?zeroDateTimeBehavior=round&serverTimezone=UTC&allowPublicKeyRetrieval=true&useSSL=false&allowMultiQueries=true&autoReconnect=true&useUnicode=yes&characterEncoding=UTF-8&sessionVariables=sql_mode=''" \
   -e DATABASE_USER=traccar \
   -e DATABASE_PASSWORD='ganti-password' \
-  -v /opt/traccar/logs:/opt/traccar/logs \
-  -v /opt/traccar/data:/opt/traccar/data \
-  ghcr.io/banghasan/traccar:<image-tag>
+  -v traccar_logs:/opt/traccar/logs \
+  -v traccar_data:/opt/traccar/data \
+  ghcr.io/banghasan/traccar:6.15.3-dev.5eb9578
 ```
 
-Nama host `mysql`, credential, volume, dan network hanyalah contoh. Image
+Nama host `mysql`, credential, volume, network, dan tag hanyalah contoh. Image
 builder tidak membuat container MySQL dan tidak mengelola migrasi database
 secara terpisah; Traccar tetap menjalankan mekanisme database-nya saat start.
+Tambahkan pasangan port TCP/UDP lain sesuai protocol yang digunakan.
 
 Untuk deployment production, gunakan database eksternal yang persistent dan
 backup database secara terpisah. Port protocol tidak perlu dipublish seluruhnya
 jika hanya sebagian protocol yang digunakan.
+
+## Sample Docker Compose dengan MySQL eksternal
+
+Compose sample tidak membuat service MySQL. Ia mengharapkan container Traccar
+dan MySQL berada pada Docker network eksternal yang sama.
+
+```bash
+cp examples/.env.example .env
+docker network create backend
+docker network connect backend <nama-container-mysql>
+docker compose -f examples/docker-compose.external-mysql.yml up -d
+```
+
+Jika network `backend` sudah ada, abaikan perintah `docker network create`.
+Ubah `MYSQL_HOST`, credential, dan `TRACCAR_IMAGE_TAG` di `.env`. Jangan commit
+file `.env`; jika package GHCR sudah public, `docker login` tidak diperlukan
+untuk pull image.
 
 ## Alur build
 
 1. User membuka **Actions → Build Traccar Image → Run workflow**.
 2. User mengisi `source_ref`, misalnya commit SHA, tag, atau `master`.
 3. GitHub Actions checkout source Traccar beserta submodule `traccar-web`.
-4. Runner memasang Java dan Node.js, lalu menjalankan server build dan web build.
+4. Runner memasang Java dan Node.js, lalu menjalankan server build, test, dan web
+   build.
 5. Workflow men-stage `tracker-server.jar`, dependency `lib`, `schema`,
    `templates`, konfigurasi, dan hasil web build.
-6. Payload dikemas sebagai `traccar-other-<version>.zip`.
-7. Docker Buildx membangun image untuk `linux/amd64`.
-8. Setelah build berhasil, image dipush ke `ghcr.io/banghasan/traccar`.
+6. Payload dikemas sebagai `traccar-other.zip` untuk input Dockerfile.
+7. Job terpisah membangun image lokal dan memeriksa `/api/health` menggunakan H2.
+8. Setelah smoke test berhasil, Docker Buildx membangun dan push image untuk
+   `linux/amd64` ke `ghcr.io/banghasan/traccar`.
 
 Input workflow yang tersedia:
 
@@ -129,8 +154,10 @@ utama.
 - Simpan digest image yang sudah diuji; gunakan digest atau tag immutable untuk
   deployment production.
 
-Package GHCR harus diubah menjadi public jika GitHub membuatnya private pada
-publish pertama. Repository source ini sendiri bersifat public.
+Verifikasi visibility package setelah publish pertama. Untuk repository public,
+package yang dibuat dengan `GITHUB_TOKEN` umumnya mengikuti visibility
+repository, tetapi pengaturan package dan akses Actions tetap perlu dicek di
+GitHub.
 
 ## Referensi
 

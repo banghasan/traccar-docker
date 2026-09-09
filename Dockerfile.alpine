@@ -1,31 +1,36 @@
-FROM alpine AS package
-
-RUN apk add --no-cache unzip
+FROM alpine:3.24.1@sha256:28bd5fe8b56d1bd048e5babf5b10710ebe0bae67db86916198a6eec434943f8b AS package
 
 COPY traccar-other.zip /tmp/traccar.zip
-RUN unzip -qo /tmp/traccar.zip -d /traccar \
+RUN busybox unzip -qo /tmp/traccar.zip -d /traccar \
     && rm /tmp/traccar.zip
 
-FROM eclipse-temurin:25-alpine AS jdk
+FROM eclipse-temurin:25.0.4_7-jdk-alpine-3.24@sha256:09349d79941fd53bb3d487b393ca118d8853c08c09193f416fe6a8718df9e732 AS jdk
 
 RUN jlink --add-modules java.se,jdk.charsets,jdk.crypto.ec,jdk.net,jdk.unsupported \
     --strip-debug --no-header-files --no-man-pages --compress=2 --output /jre
 
-FROM alpine
+FROM alpine:3.24.1@sha256:28bd5fe8b56d1bd048e5babf5b10710ebe0bae67db86916198a6eec434943f8b
 
 LABEL org.opencontainers.image.title="Traccar" \
       org.opencontainers.image.description="Unofficial Traccar image built from upstream source" \
+      org.opencontainers.image.licenses="Apache-2.0" \
       org.opencontainers.image.source="https://github.com/banghasan/traccar-docker"
 
 COPY --from=package /traccar /opt/traccar
 COPY --from=jdk /jre /opt/traccar/jre
 
+RUN addgroup -S traccar \
+    && adduser -S -G traccar traccar \
+    && chown -R traccar:traccar /opt/traccar
+
 WORKDIR /opt/traccar
 
 EXPOSE 8082 5000-5500/tcp 5000-5500/udp
 
-HEALTHCHECK --interval=30s --timeout=5s --start-period=5m --retries=3 \
+HEALTHCHECK --interval=2m --timeout=5s --start-period=1h --retries=3 \
     CMD wget -q --spider http://localhost:8082/api/health || exit 1
+
+USER traccar:traccar
 
 ENTRYPOINT ["/opt/traccar/jre/bin/java", "-XX:+ExitOnOutOfMemoryError"]
 CMD ["-jar", "tracker-server.jar", "conf/traccar.xml"]

@@ -27,7 +27,7 @@ Di luar scope:
 Dockerfile upstream saat ini memiliki pola berikut:
 
 ```text
-traccar-other-<VERSION>.zip
+traccar-other-<VERSION>.zip (upstream) / traccar-other.zip (builder ini)
         │
         ├── server jar + lib
         ├── schema + templates + conf
@@ -102,10 +102,10 @@ Workflow final mengikuti urutan ini:
 workflow_dispatch
       │
       ▼
-checkout traccar @ source_ref + submodule web
+checkout traccar @ source_ref + submodule web (tanpa credential tersimpan)
       │
       ├── setup Java 25 + Gradle cache
-      ├── ./gradlew assemble
+      ├── ./gradlew build
       ├── setup Node 22 + npm cache
       └── npm ci && npm run build pada traccar-web
       │
@@ -113,22 +113,28 @@ checkout traccar @ source_ref + submodule web
 stage server, lib, schema, templates, conf, web
       │
       ▼
-buat traccar-other-<version>.zip
+buat traccar-other.zip
       │
       ▼
-Buildx: linux/amd64
+upload payload artifact
+      │
+      ▼
+build image lokal + smoke test /api/health
+      │
+      ▼
+Buildx: linux/amd64 + SBOM/provenance + attestation
       │
       ▼
 push ke ghcr.io/banghasan/traccar
 ```
 
-Workflow tidak boleh memiliki `push:` atau `schedule:` pada blok `on`. Karena
-workflow selalu melakukan publish setelah build manual, permission minimumnya
-adalah `contents: read` dan `packages: write`.
+Workflow tidak boleh memiliki `push:` atau `schedule:` pada blok `on`. Permission
+ditetapkan per job: job build dan smoke test hanya memiliki `contents: read`,
+sedangkan job publish memiliki `contents: read`, `packages: write`,
+`attestations: write`, dan `id-token: write` untuk attestation image.
 
-Action pihak ketiga menggunakan versi major yang dipelihara dan,
-untuk repository production yang memerlukan supply-chain control ketat, dipin ke
-commit SHA.
+Action pihak ketiga dipin ke commit SHA dengan komentar versi major agar
+pembaruan dapat dilakukan secara terkontrol.
 
 ## 6. Registry dan penamaan image
 
@@ -153,12 +159,13 @@ Label OCI yang disarankan:
 - `org.opencontainers.image.version` — `image_tag`;
 - `org.opencontainers.image.created` — waktu build.
 
-Tag utama sebaiknya immutability-friendly. Simpan digest hasil publish dan
-gunakan digest tersebut pada deployment yang membutuhkan repeatability.
+Tag utama sebaiknya immutability-friendly. Workflow menolak tag yang sudah ada,
+tetapi digest tetap harus disimpan dan digunakan pada deployment yang membutuhkan
+repeatability.
 
 ## 7. Konfigurasi database eksternal
 
-Image harus tetap membawa driver database yang sudah tersedia pada server
+Image tetap membawa driver database yang sudah tersedia pada server
 Traccar, tetapi tidak membawa service database. Saat container dijalankan,
 environment variable berikut dapat diteruskan ke konfigurasi Traccar:
 
@@ -174,6 +181,15 @@ Untuk PostgreSQL/TimescaleDB, ganti driver dan JDBC URL sesuai dokumentasi
 Traccar. Password tidak boleh ditulis di repository atau command history pada
 server production; gunakan secret manager atau mekanisme secret Docker.
 
+Sample Compose tersedia di
+[`examples/docker-compose.external-mysql.yml`](../examples/docker-compose.external-mysql.yml).
+Sample tersebut sengaja hanya mendefinisikan service Traccar dan memakai Docker
+network eksternal; MySQL tetap dikelola di luar repository ini.
+
+Contoh hanya mempublish port `5000` sebagai ilustrasi. Tambahkan pasangan port
+TCP/UDP sesuai protocol yang digunakan; jangan mempublish seluruh rentang jika
+tidak diperlukan.
+
 Volume yang umumnya perlu dipertimbangkan:
 
 - `/opt/traccar/logs` untuk log;
@@ -185,11 +201,12 @@ Volume yang umumnya perlu dipertimbangkan:
 
 Sebelum tag dipromosikan ke production:
 
-1. Catat source SHA dan image digest.
+1. Catat source SHA, image digest, dan hasil attestation.
 2. Jalankan image pada database staging hasil restore backup.
 3. Tunggu health endpoint `http://localhost:8082/api/health` merespons sukses.
 4. Verifikasi web UI, login, migration, event, notification, dan protocol utama.
-5. Uji restart container dan koneksi ulang ke database.
+5. Uji restart container, koneksi ulang ke database, dan permission volume
+   dengan user non-root.
 6. Promosikan hanya tag/digest yang lulus pengujian.
 
 Rollback dilakukan dengan mengembalikan deployment ke digest image sebelumnya,
@@ -215,11 +232,15 @@ bukan dengan mengandalkan tag mutable.
 
 Implementasi awal yang sudah ditambahkan:
 
-1. `Dockerfile.alpine` untuk image Alpine `linux/amd64`.
+1. `Dockerfile.alpine` untuk image Alpine `linux/amd64`, base digest terkunci,
+   healthcheck satu jam, dan user non-root.
 2. `.github/workflows/build-image.yml` dengan `workflow_dispatch` saja.
-3. Build server dan web app dari source upstream.
-4. Publish ke `ghcr.io/banghasan/traccar` dengan permission minimum.
-5. `.dockerignore` dan `.gitignore` untuk menjaga context tetap kecil.
+3. Build server, test, dan web app dari source upstream.
+4. Smoke test sebelum publish, lalu publish ke
+   `ghcr.io/banghasan/traccar` dengan job dan permission terpisah.
+5. Payload reproducible, Docker cache, SBOM, provenance, dan attestation image.
+6. `.dockerignore`, `.gitignore`, Dependabot, dan sample Compose tanpa service
+   MySQL.
 
 Tahap berikutnya:
 

@@ -1,0 +1,1 @@
+[SUGGESTION] `.github/workflows/build-image.yml:source_ref` — Default `master` memang berguna untuk mengambil bugfix terbaru, tetapi hasilnya tidak reproducible jika ref tidak dicatat dengan benar saat deployment — Untuk production gunakan commit SHA atau tag upstream, lalu simpan source revision dan image digest dari summary workflow.
