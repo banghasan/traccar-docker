@@ -25,6 +25,8 @@ Rancangan ini layak digunakan dengan ketentuan berikut:
   melakukan push ke GHCR.
 - Build menjalankan server Gradle dan web app, kemudian membuat payload yang
   setara dengan `traccar-other-<version>.zip` milik upstream.
+- `image_tag` pada form workflow default ke `auto` dan tetap dapat diedit. Nilai
+  `auto` menghasilkan tag `VERSION-dev.SHORT_SHA` setelah source di-resolve.
 - Dockerfile runtime mengikuti pola resmi Traccar: custom JRE dibuat dengan
   `jlink`, lalu aplikasi dijalankan dari `/opt/traccar`.
 - Image hanya ditargetkan untuk `linux/amd64` pada tahap awal.
@@ -121,20 +123,24 @@ untuk pull image.
 1. User membuka **Actions → Build Traccar Image → Run workflow**.
 2. User mengisi `source_ref`, misalnya commit SHA, tag, atau `master`.
 3. GitHub Actions checkout source Traccar beserta submodule `traccar-web`.
-4. Runner memasang Java dan Node.js, lalu menjalankan server build, test, dan web
+4. Jika `image_tag` bernilai `auto`, workflow membaca versi source dan 7 karakter
+   awal commit SHA, misalnya menjadi `6.15.3-dev.abc1234`. Nilai ini tetap dapat
+   diganti dengan tag manual.
+5. Runner memasang Java dan Node.js, lalu menjalankan server build, test, dan web
    build.
-5. Workflow men-stage `tracker-server.jar`, dependency `lib`, `schema`,
+6. Workflow men-stage `tracker-server.jar`, dependency `lib`, `schema`,
    `templates`, konfigurasi, dan hasil web build.
-6. Payload dikemas sebagai `traccar-other.zip` untuk input Dockerfile.
-7. Job terpisah membangun image lokal dan memeriksa `/api/health` menggunakan H2.
-8. Setelah smoke test berhasil, Docker Buildx membangun dan push image untuk
+7. Payload dikemas sebagai `traccar-other.zip` untuk input Dockerfile.
+8. Job terpisah membangun image lokal dan memeriksa `/api/health` menggunakan H2.
+9. Setelah smoke test berhasil, Docker Buildx membangun dan push image untuk
    `linux/amd64` ke `ghcr.io/banghasan/traccar`.
 
 Input workflow yang tersedia:
 
 - `source_ref`: branch, tag, atau commit SHA upstream; default `master`.
-- `image_tag`: tag Docker yang akan dipublish, misalnya
-  `6.15.3-dev.5eb9578`.
+- `image_tag`: default `auto`; menghasilkan tag seperti
+  `6.15.3-dev.5eb9578` dari versi source dan 7 karakter awal commit SHA. Field
+  ini tetap dapat diisi tag manual.
 
 Workflow selalu melakukan push setelah build berhasil. Tidak ada mode build-only
 pada workflow ini.

@@ -85,13 +85,19 @@ Workflow yang digunakan memiliki input:
 | Input | Wajib | Nilai contoh | Keterangan |
 |---|---:|---|---|
 | `source_ref` | ya | `master` atau `5eb9578...` | Ref upstream yang di-checkout |
-| `image_tag` | ya | `6.15.3-master.20260909` | Tag image hasil build |
+| `image_tag` | ya | `auto` atau `6.15.3-custom` | Tag image hasil build |
 
 Default `source_ref` boleh `master` agar nyaman untuk bugfix terbaru, tetapi
 deployment production harus memakai commit SHA atau tag internal immutable.
 
-`image_tag` tidak boleh otomatis memakai `latest` untuk source yang berubah.
-Jika alias seperti `latest` atau `edge` memang diperlukan, publish alias itu
+`image_tag` default ke `auto`. Setelah source di-checkout, workflow membaca
+`Implementation-Version` dari `build.gradle` dan 7 karakter awal source SHA,
+lalu menghasilkan tag `VERSION-dev.SHORT_SHA`, misalnya
+`6.15.3-dev.5eb9578`. User tetap dapat mengganti `auto` dengan tag manual.
+
+Nilai `auto` dihitung setelah workflow dimulai sehingga form GitHub menampilkan
+teks `auto`, bukan versi final. Tag final dicatat pada build summary dan dipakai
+oleh smoke test, preflight registry, serta publish. Alias seperti `latest` tetap
 harus menjadi keputusan eksplisit pada workflow manual.
 
 ## 5. Langkah workflow yang diharapkan
@@ -104,6 +110,7 @@ workflow_dispatch
       ▼
 checkout traccar @ source_ref + submodule web (tanpa credential tersimpan)
       │
+      ├── resolve image_tag (auto → VERSION-dev.SHORT_SHA)
       ├── setup Java 25 + Gradle cache
       ├── ./gradlew build
       ├── setup Node 22 + npm cache
@@ -148,7 +155,7 @@ ghcr.io/banghasan/traccar
 Contoh penamaan:
 
 ```text
-ghcr.io/banghasan/traccar:6.15.3-master.20260909
+ghcr.io/banghasan/traccar:6.15.3-dev.5eb9578
 ghcr.io/banghasan/traccar:sha-5eb9578
 ```
 

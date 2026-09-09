@@ -9,8 +9,9 @@ on:
         default: master
         type: string
       image_tag:
-        description: Immutable Docker tag to publish, for example 6.15.3-dev.5eb9578
+        description: Docker tag to publish; use auto for VERSION-dev.SHORT_SHA
         required: true
+        default: auto
         type: string
 
 permissions: {}
@@ -28,19 +29,9 @@ jobs:
       contents: read
     outputs:
       source_revision: ${{ steps.source.outputs.revision }}
+      image_tag: ${{ steps.source.outputs.image_tag }}
 
     steps:
-      - name: Validate image tag
-        env:
-          IMAGE_TAG: ${{ inputs.image_tag }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          if [[ ! "$IMAGE_TAG" =~ ^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$ ]]; then
-            echo "Invalid Docker image tag: $IMAGE_TAG"
-            exit 1
-          fi
-
       - name: Checkout Traccar source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -51,16 +42,38 @@ jobs:
           submodules: recursive
           path: traccar-source
 
-      - name: Record source revision
+      - name: Record source revision and resolve image tag
         id: source
         working-directory: traccar-source
+        env:
+          REQUESTED_IMAGE_TAG: ${{ inputs.image_tag }}
         shell: bash
         run: |
           set -euo pipefail
           revision="$(git rev-parse HEAD)"
           commit_timestamp="$(git show -s --format=%ct HEAD)"
+          short_revision="${revision:0:7}"
+
+          if [[ "$REQUESTED_IMAGE_TAG" == "auto" ]]; then
+            version="$(sed -nE 's/.*Implementation-Version"?[[:space:]]*:[[:space:]]*"([^"]+)".*/\1/p' build.gradle | head -n 1)"
+            if [[ -z "$version" ]]; then
+              echo "Unable to determine Traccar version from build.gradle"
+              exit 1
+            fi
+            image_tag="${version}-dev.${short_revision}"
+          else
+            image_tag="$REQUESTED_IMAGE_TAG"
+          fi
+
+          if [[ ! "$image_tag" =~ ^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$ ]]; then
+            echo "Invalid Docker image tag: $image_tag"
+            exit 1
+          fi
+
           echo "revision=$revision" >> "$GITHUB_OUTPUT"
           echo "commit_timestamp=$commit_timestamp" >> "$GITHUB_OUTPUT"
+          echo "image_tag=$image_tag" >> "$GITHUB_OUTPUT"
+          echo "Resolved image tag: $image_tag"
 
       - name: Set up Java
         uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c # v6.0.0
@@ -149,14 +162,14 @@ jobs:
           file: ./Dockerfile.alpine
           platforms: linux/amd64
           load: true
-          tags: local/traccar:${{ inputs.image_tag }}
+          tags: local/traccar:${{ needs.build-source.outputs.image_tag }}
           cache-from: type=gha,scope=traccar-amd64
           cache-to: type=gha,mode=max,scope=traccar-amd64
           provenance: false
           sbom: false
 
       - name: Start smoke-test container
-        run: docker run -d --name traccar-smoke -p 18082:8082 local/traccar:${{ inputs.image_tag }}
+        run: docker run -d --name traccar-smoke -p 18082:8082 local/traccar:${{ needs.build-source.outputs.image_tag }}
 
       - name: Probe Traccar health endpoint
         shell: bash
@@ -219,7 +232,7 @@ jobs:
 
       - name: Ensure image tag is unused
         env:
-          IMAGE_TAG: ${{ inputs.image_tag }}
+          IMAGE_TAG: ${{ needs.build-source.outputs.image_tag }}
         shell: bash
         run: |
           set -euo pipefail
@@ -241,10 +254,10 @@ jobs:
           file: ./Dockerfile.alpine
           platforms: linux/amd64
           push: true
-          tags: ${{ env.IMAGE_NAME }}:${{ inputs.image_tag }}
+          tags: ${{ env.IMAGE_NAME }}:${{ needs.build-source.outputs.image_tag }}
           labels: |
             org.opencontainers.image.revision=${{ needs.build-source.outputs.source_revision }}
-            org.opencontainers.image.version=${{ inputs.image_tag }}
+            org.opencontainers.image.version=${{ needs.build-source.outputs.image_tag }}
             io.banghasan.traccar.source-ref=${{ inputs.source_ref }}
           cache-from: type=gha,scope=traccar-amd64
           cache-to: type=gha,mode=max,scope=traccar-amd64
@@ -260,13 +273,15 @@ jobs:
 
       - name: Write build summary
         env:
+          IMAGE_TAG: ${{ needs.build-source.outputs.image_tag }}
           SOURCE_REVISION: ${{ needs.build-source.outputs.source_revision }}
           IMAGE_DIGEST: ${{ steps.push.outputs.digest }}
         run: |
           {
             echo "### Traccar image published"
             echo
-            echo "- Image: \`${IMAGE_NAME}:${{ inputs.image_tag }}\`"
+            echo "- Image: \`${IMAGE_NAME}:${IMAGE_TAG}\`"
+            echo "- Requested tag: \`${{ inputs.image_tag }}\`"
             echo "- Source ref: \`${{ inputs.source_ref }}\`"
             echo "- Source revision: \`${SOURCE_REVISION}\`"
             echo "- Digest: \`${IMAGE_DIGEST}\`"
