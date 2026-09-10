@@ -168,8 +168,19 @@ jobs:
           provenance: false
           sbom: false
 
+      - name: Create root-owned smoke-test volumes
+        run: |
+          docker volume create traccar-smoke-logs
+          docker volume create traccar-smoke-data
+
       - name: Start smoke-test container
-        run: docker run -d --name traccar-smoke -p 18082:8082 local/traccar:${{ needs.build-source.outputs.image_tag }}
+        run: >-
+          docker run -d
+          --name traccar-smoke
+          -p 18082:8082
+          --mount source=traccar-smoke-logs,target=/opt/traccar/logs
+          --mount source=traccar-smoke-data,target=/opt/traccar/data
+          local/traccar:${{ needs.build-source.outputs.image_tag }}
 
       - name: Probe Traccar health endpoint
         shell: bash
@@ -193,7 +204,9 @@ jobs:
 
       - name: Remove smoke-test container
         if: always()
-        run: docker rm -f traccar-smoke 2>/dev/null || true
+        run: |
+          docker rm -f traccar-smoke 2>/dev/null || true
+          docker volume rm traccar-smoke-logs traccar-smoke-data 2>/dev/null || true
 
   publish:
     name: Publish image to GHCR

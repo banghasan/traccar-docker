@@ -18,10 +18,12 @@ LABEL org.opencontainers.image.title="Traccar" \
 
 COPY --from=package /traccar /opt/traccar
 COPY --from=jdk /jre /opt/traccar/jre
+COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 
 RUN addgroup -S traccar \
     && adduser -S -G traccar traccar \
-    && chown -R traccar:traccar /opt/traccar
+    && chown -R traccar:traccar /opt/traccar \
+    && chmod 0755 /usr/local/bin/docker-entrypoint.sh
 
 WORKDIR /opt/traccar
 
@@ -30,7 +32,5 @@ EXPOSE 8082 5000-5500/tcp 5000-5500/udp
 HEALTHCHECK --interval=2m --timeout=5s --start-period=1h --retries=3 \
     CMD wget -q --spider http://localhost:8082/api/health || exit 1
 
-USER traccar:traccar
-
-ENTRYPOINT ["/opt/traccar/jre/bin/java", "-XX:+ExitOnOutOfMemoryError"]
+ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
 CMD ["-jar", "tracker-server.jar", "conf/traccar.xml"]

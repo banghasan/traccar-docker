@@ -212,8 +212,7 @@ Sebelum tag dipromosikan ke production:
 2. Jalankan image pada database staging hasil restore backup.
 3. Tunggu health endpoint `http://localhost:8082/api/health` merespons sukses.
 4. Verifikasi web UI, login, migration, event, notification, dan protocol utama.
-5. Uji restart container, koneksi ulang ke database, dan permission volume
-   dengan user non-root.
+5. Uji restart container, koneksi ulang ke database, dan permission volume.
 6. Promosikan hanya tag/digest yang lulus pengujian.
 
 Rollback dilakukan dengan mengembalikan deployment ke digest image sebelumnya,
@@ -240,7 +239,7 @@ bukan dengan mengandalkan tag mutable.
 Implementasi awal yang sudah ditambahkan:
 
 1. `Dockerfile.alpine` untuk image Alpine `linux/amd64`, base digest terkunci,
-   healthcheck satu jam, dan user non-root.
+   healthcheck satu jam, init permission volume, dan proses Traccar non-root.
 2. `.github/workflows/build-image.yml` dengan `workflow_dispatch` saja.
 3. Build server, test, dan web app dari source upstream.
 4. Smoke test sebelum publish, lalu publish ke

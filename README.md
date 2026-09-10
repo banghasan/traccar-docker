@@ -25,7 +25,7 @@ Rancangan ini layak digunakan dengan ketentuan berikut:
   melakukan push ke GHCR.
 - Build menjalankan server Gradle dan web app, kemudian membuat payload yang
   setara dengan `traccar-other-<version>.zip` milik upstream.
-- `image_tag` pada form workflow default ke `auto` dan tetap dapat diedit. Nilai
+  - `image_tag` pada form workflow default ke `auto` dan tetap dapat diedit. Nilai
   `auto` menghasilkan tag `VERSION-dev.SHORT_SHA` setelah source di-resolve.
 - Dockerfile runtime mengikuti pola resmi Traccar: custom JRE dibuat dengan
   `jlink`, lalu aplikasi dijalankan dari `/opt/traccar`.
@@ -58,6 +58,7 @@ menjalankan database.
 ├── docs/
 │   └── REPOSITORY-DESIGN.md      # keputusan dan prosedur operasional
 ├── Dockerfile.alpine             # image Alpine, linux/amd64
+├── docker-entrypoint.sh           # repair volume ownership, lalu drop privilege
 ├── examples/
 │   ├── docker-compose.external-mysql.yml
 │   └── .env.example
@@ -97,6 +98,10 @@ builder tidak membuat container MySQL dan tidak mengelola migrasi database
 secara terpisah; Traccar tetap menjalankan mekanisme database-nya saat start.
 Tambahkan pasangan port TCP/UDP lain sesuai protocol yang digunakan.
 
+Image memperbaiki ownership volume saat startup, kemudian menjalankan proses
+Java sebagai user non-root `traccar`. Untuk bind mount, pastikan host
+mengizinkan container mengubah ownership directory tersebut.
+
 Untuk deployment production, gunakan database eksternal yang persistent dan
 backup database secara terpisah. Port protocol tidak perlu dipublish seluruhnya
 jika hanya sebagian protocol yang digunakan.
@@ -131,7 +136,8 @@ untuk pull image.
 6. Workflow men-stage `tracker-server.jar`, dependency `lib`, `schema`,
    `templates`, konfigurasi, dan hasil web build.
 7. Payload dikemas sebagai `traccar-other.zip` untuk input Dockerfile.
-8. Job terpisah membangun image lokal dan memeriksa `/api/health` menggunakan H2.
+8. Job terpisah membangun image lokal dengan volume logs/data root-owned dan
+   memeriksa `/api/health` menggunakan H2.
 9. Setelah smoke test berhasil, Docker Buildx membangun dan push image untuk
    `linux/amd64` ke `ghcr.io/banghasan/traccar`.
 
