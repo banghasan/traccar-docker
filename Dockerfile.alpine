@@ -4,7 +4,7 @@ COPY traccar-other.zip /tmp/traccar.zip
 RUN busybox unzip -qo /tmp/traccar.zip -d /traccar \
     && rm /tmp/traccar.zip
 
-FROM eclipse-temurin:25.0.4_7-jdk-alpine-3.24@sha256:09349d79941fd53bb3d487b393ca118d8853c08c09193f416fe6a8718df9e732 AS jdk
+FROM eclipse-temurin:27-jdk-alpine-3.24@sha256:cd0c949d8a55b41cb6e7ac0fe464045aac42f97ab8032761b3843e52e68965de AS jdk
 
 RUN jlink --add-modules java.se,jdk.charsets,jdk.crypto.ec,jdk.net,jdk.unsupported \
     --strip-debug --no-header-files --no-man-pages --compress=2 --output /jre
